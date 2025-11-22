@@ -19,25 +19,6 @@ In this exercise, you will build two separate Go servers communicating with each
 - Implement basic error handling and proper gRPC status codes.  
 - Use Go modules and standard gRPC packages.
 
-## Project Structure Suggestion
-
-exercises/grpc/
-├── user-service/             # gRPC server managing user data
-│   ├── server.go
-│   ├── userpb/               # Generated protobuf Go files
-│   └── users.go              # User management and storage logic
-│
-├── client-service/           # gRPC client acting as API gateway
-│   ├── server.go             # HTTP server forwarding to gRPC client calls
-│   ├── userpb/               # Same protobuf generated files
-│   └── client.go             # gRPC client implementation
-│
-├── proto/
-│   └── user.proto            # Service and message definitions
-│
-└── README.md                 # This exercise documentation
-
-
 ## Learning Objectives
 
 - Understand and implement gRPC services and messages with Protocol Buffers.  
