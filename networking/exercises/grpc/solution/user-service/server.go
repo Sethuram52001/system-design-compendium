@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 
-	pb "github.com/Sethuram52001/system-design-compendium/exercises/grpc/user-service/userpb"
+	pb "github.com/Sethuram52001/system-design-compendium/networking/exercises/grpc/solution/user-service/userpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

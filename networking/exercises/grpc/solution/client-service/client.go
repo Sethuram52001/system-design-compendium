@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	pb "github.com/Sethuram52001/system-design-compendium/exercises/grpc/client-service/userpb"
+	pb "github.com/Sethuram52001/system-design-compendium/networking/exercises/grpc/solution/client-service/userpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

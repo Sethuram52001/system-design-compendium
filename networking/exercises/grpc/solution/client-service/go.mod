@@ -1,4 +1,4 @@
-module github.com/Sethuram52001/system-design-compendium/exercises/grpc/client-service
+module github.com/Sethuram52001/system-design-compendium/networking/exercises/grpc/solution/client-service
 
 go 1.24.3
 

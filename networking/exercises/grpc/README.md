@@ -33,3 +33,7 @@ In this exercise, you will build two separate Go servers communicating with each
 2. Start the UserService gRPC server.  
 3. Start the ClientService HTTP server which acts as a gRPC client.  
 4. Use curl or HTTP clients to call ClientService’s `/user/{id}` endpoint to fetch data, which internally calls UserService over gRPC.
+
+## Reference Solution
+
+The current reference implementation lives in `solution/`, with separate Go modules for `user-service` and `client-service`.

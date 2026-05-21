@@ -27,6 +27,10 @@ Build a simple RESTful API in Go using the Gin framework to manage user data. Th
 - Store all user data in-memory using Go maps keyed by user ID  
 - Use Gin's routing and middleware facilities for clean handler implementations
 
+## Reference Solution
+
+The current reference implementation lives in `solution/backend`.
+
 ## Learning Objectives
 
 - Gain practical experience building REST APIs with Gin framework  

@@ -1,4 +1,4 @@
-module github.com/Sethuram52001/system-design-compendium/exercises/rest-api/backend
+module github.com/Sethuram52001/system-design-compendium/networking/exercises/rest-api/solution/backend
 
 go 1.24.3
 

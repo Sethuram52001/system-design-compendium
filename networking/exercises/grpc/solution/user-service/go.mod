@@ -1,4 +1,4 @@
-module github.com/Sethuram52001/system-design-compendium/exercises/grpc/user-service
+module github.com/Sethuram52001/system-design-compendium/networking/exercises/grpc/solution/user-service
 
 go 1.24.3
 
