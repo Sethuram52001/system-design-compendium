@@ -21,6 +21,7 @@ func NewUserStore() *UserStore {
 		Email: "john@example.com",
 		Age:   30,
 	}
+
 	store.users["2"] = &pb.User{
 		Id:    "2",
 		Name:  "Jane Smith",
@@ -36,5 +37,6 @@ func (s *UserStore) GetUser(id string) (*pb.User, error) {
 	if !exists {
 		return nil, errors.New("user not found")
 	}
+
 	return user, nil
 }

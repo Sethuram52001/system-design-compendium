@@ -2,9 +2,8 @@ syntax = "proto3";
 
 package userpb;
 
-option go_package = "github.com/Sethuram52001/system-design-compendium/networking/exercises/grpc/proto/userpb";
+option go_package = "github.com/Sethuram52001/system-design-compendium/networking/exercises/grpc/solution/proto/userpb";
 
-// User message definition
 message User {
     string id = 1;
     string name = 2;
@@ -12,17 +11,14 @@ message User {
     int32 age = 4;
 }
 
-// Request message for GetUser RPC
 message GetUserRequest {
     string id = 1;
-} 
+}
 
-// Response message for GetUser RPC
 message GetUserResponse {
     User user = 1;
 }
 
-// UserService definition
 service UserService {
     rpc GetUser(GetUserRequest) returns (GetUserResponse);
 }
