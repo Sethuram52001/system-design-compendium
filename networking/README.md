@@ -70,6 +70,7 @@ The higher you go in the stack, the easier the programming model becomes, but th
 - [REST API](exercises/rest-api/README.md): HTTP methods, status codes, JSON payloads, and resource-oriented CRUD.
 - [GraphQL](exercises/graphql/README.md): schema-first APIs, queries, mutations, and resolver behavior.
 - [gRPC](exercises/grpc/README.md): protobuf contracts, unary RPC, status codes, and service-to-service communication.
+- [Server-Sent Events](exercises/sse/README.md): one-way server-to-client realtime updates over HTTP.
 
 ## Resources
 
