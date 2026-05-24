@@ -72,6 +72,12 @@ The higher you go in the stack, the easier the programming model becomes, but th
 - [gRPC](exercises/grpc/README.md): protobuf contracts, unary RPC, status codes, and service-to-service communication.
 - [Server-Sent Events](exercises/sse/README.md): one-way server-to-client realtime updates over HTTP.
 
+## Wiki
+
+- [HTTP and REST](wiki/rest.md)
+- [gRPC](wiki/grpc.md)
+- [Server-Sent Events](wiki/sse.md)
+
 ## Resources
 
 - [Networking resources](resources.md)
