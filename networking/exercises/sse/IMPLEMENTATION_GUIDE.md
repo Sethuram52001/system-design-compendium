@@ -2,102 +2,48 @@
 
 ## Goal
 
-Build the smallest useful SSE demo for a modern LLM-style use case: a Go server exposes `GET /chat/stream`, keeps the HTTP connection open, and streams a fake assistant response one chunk at a time.
+Build a small SSE endpoint that simulates an LLM response streaming back one chunk at a time.
 
-No AI endpoint is called. The point is to understand the streaming transport.
-
-## Mental Model
-
-SSE is just HTTP where the response does not finish immediately.
-
-Instead of:
+No AI endpoint is called. The exercise is about the transport pattern:
 
 ```text
-client -> request
-server -> one response
-connection closes
-```
-
-SSE does this:
-
-```text
-client -> request /chat/stream?message=...
-server -> token event
+client -> GET /chat/stream?message=...
 server -> token event
 server -> token event
 server -> done event
-connection stays open
 ```
 
-This is a natural fit for LLM-style responses because the client usually sends one prompt, then the server streams output back in one direction.
+## Mental Model
 
-## SSE Wire Format
+SSE is a long-lived HTTP response. The server writes text in a specific format and flushes each event so the client receives it immediately.
 
-The simplest valid event looks like this:
-
-```text
-data: hello
-
-```
-
-The blank line at the end matters. It tells the client that one event is complete.
-
-Useful fields:
-
-- `data:` event payload
-- `event:` optional event name
-- `id:` optional event ID for reconnects
-- `retry:` optional reconnect delay in milliseconds
-
-Example:
+The most important format rule is the blank line:
 
 ```text
-id: 1
 event: token
-data: {"delta":"Hello"}
+data: {"delta":"hello"}
 
 ```
 
-## Step 1: Create the Solution Folder
+That blank line marks the end of one event.
+
+## Step 1: Create the Solution
 
 From `networking/exercises/sse`:
 
 ```bash
-mkdir -p solution/server
-cd solution/server
+mkdir -p solution
+cd solution
 go mod init github.com/Sethuram52001/system-design-compendium/networking/exercises/sse/solution/server
 ```
 
-## Step 2: Create the Simulated LLM Stream Handler
-
 Create `main.go`.
 
-The handler needs to:
+## Step 2: Add the Event Types
 
-- Confirm the response supports flushing.
-- Set SSE headers.
-- Read the user's input message from the query string.
-- Choose a fake assistant response.
-- Split the fake response into small chunks.
-- Write each chunk as a `token` event.
-- Write a final `done` event.
-- Flush after each event.
-- Stop when the client disconnects.
-
-Use this structure:
+Use small structs for the event payloads:
 
 ```go
-package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
-	"time"
-)
-
 type tokenEvent struct {
 	Delta string `json:"delta"`
 }
@@ -105,29 +51,75 @@ type tokenEvent struct {
 type doneEvent struct {
 	Reason string `json:"reason"`
 }
+```
 
-func writeSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any) error {
+`tokenEvent` carries one response chunk. `doneEvent` tells the client the stream is finished.
+
+## Step 3: Add the SSE Writer
+
+This helper writes one SSE event and flushes it:
+
+```go
+func writeSSE(w http.ResponseWriter, flusher http.Flusher, id int, event string, data any) error {
 	payload, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
-		return err
-	}
-
+	fmt.Fprintf(w, "id: %d\n", id)
+	fmt.Fprintf(w, "event: %s\n", event)
+	fmt.Fprintf(w, "data: %s\n\n", payload)
 	flusher.Flush()
 	return nil
 }
+```
 
-func fakeLLMResponse(message string) []string {
-	response := "You asked: " + message + ". In a real LLM API, the model would generate this response incrementally. Here, we split a canned response into chunks so the client can learn how SSE streaming works."
-	return strings.Split(response, " ")
+Important pieces:
+
+- `id:` gives the event an ID for reconnect behavior.
+- `event:` names the event type, such as `token` or `done`.
+- `data:` carries the payload.
+- `\n\n` ends the event.
+- `Flush()` pushes buffered bytes to the client immediately.
+
+## Step 4: Add Retry and Heartbeat Helpers
+
+`retry:` suggests how long the browser should wait before reconnecting:
+
+```go
+func writeRetry(w http.ResponseWriter, flusher http.Flusher, retryMillis int) {
+	fmt.Fprintf(w, "retry: %d\n\n", retryMillis)
+	flusher.Flush()
 }
+```
 
+Heartbeat comments keep idle connections alive:
+
+```go
+func writeHeartbeat(w http.ResponseWriter, flusher http.Flusher) {
+	fmt.Fprint(w, ": heartbeat\n\n")
+	flusher.Flush()
+}
+```
+
+Lines starting with `:` are SSE comments. The browser ignores them as events, but the bytes still keep the connection active.
+
+## Step 5: Add the Stream Handler
+
+The handler should:
+
+- check that streaming is supported
+- set SSE headers
+- read `message` from the query string
+- send `retry: 3000`
+- stream fake tokens
+- send periodic heartbeats
+- send `done`
+- stop if the client disconnects
+
+Core shape:
+
+```go
 func chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -135,76 +127,52 @@ func chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
 	message := r.URL.Query().Get("message")
 	if message == "" {
 		message = "Explain Server-Sent Events"
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	writeRetry(w, flusher, 3000)
 
-	for _, chunk := range fakeLLMResponse(message) {
+	eventID := 1
+	for index, chunk := range fakeLLMResponse(message) {
 		select {
 		case <-r.Context().Done():
-			log.Println("client disconnected")
 			return
 		default:
-			if err := writeSSE(w, flusher, "token", tokenEvent{Delta: chunk + " "}); err != nil {
-				log.Printf("failed to write token: %v", err)
-				return
+			if index > 0 && index%8 == 0 {
+				writeHeartbeat(w, flusher)
 			}
+
+			writeSSE(w, flusher, eventID, "token", tokenEvent{Delta: chunk + " "})
+			eventID++
 			time.Sleep(250 * time.Millisecond)
 		}
 	}
 
-	if err := writeSSE(w, flusher, "done", doneEvent{Reason: "stop"}); err != nil {
-		log.Printf("failed to write done event: %v", err)
-	}
+	writeSSE(w, flusher, eventID, "done", doneEvent{Reason: "stop"})
 }
+```
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, `<!doctype html>
-<html>
-<body>
-  <h1>Simulated LLM SSE Stream</h1>
-  <form id="form">
-    <input id="message" value="Explain SSE in one sentence" />
-    <button type="submit">Stream</button>
-  </form>
-  <pre id="output"></pre>
-  <script>
-    const form = document.getElementById("form");
-    const message = document.getElementById("message");
-    const output = document.getElementById("output");
+Your fake response function can be simple:
 
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      output.textContent = "";
-
-      const stream = new EventSource("/chat/stream?message=" + encodeURIComponent(message.value));
-
-      stream.addEventListener("token", (event) => {
-        const payload = JSON.parse(event.data);
-        output.textContent += payload.delta;
-      });
-
-      stream.addEventListener("done", () => {
-        stream.close();
-      });
-
-      stream.onerror = () => {
-        stream.close();
-      };
-    });
-  </script>
-</body>
-</html>`)
+```go
+func fakeLLMResponse(message string) []string {
+	response := "You asked: " + message + ". This canned response is split into chunks to simulate LLM streaming."
+	return strings.Split(response, " ")
 }
+```
 
+## Step 6: Wire the Server
+
+For a curl-first exercise, you only need:
+
+```go
 func main() {
-	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/chat/stream", chatStreamHandler)
 
 	log.Println("SSE server listening on :8080")
@@ -212,62 +180,66 @@ func main() {
 }
 ```
 
-## Step 3: Run It
+A tiny browser UI with `EventSource` is optional. The backend concept can be tested fully with curl.
+
+## Step 7: Test the Stream
+
+Run:
 
 ```bash
 go run .
 ```
 
-Open:
-
-```text
-http://localhost:8080
-```
-
-Type a message and submit the form. You should see the fake assistant response appear chunk by chunk.
-
-You can also test with curl:
+Then:
 
 ```bash
 curl -N "http://localhost:8080/chat/stream?message=Explain%20SSE"
 ```
 
-The `-N` flag disables curl buffering so streamed events show up as they arrive.
+Expected shape:
 
-## Step 4: Explain the Important Pieces
+```text
+retry: 3000
 
-- `text/event-stream` tells the client this is an SSE stream.
-- `http.Flusher` lets the server push buffered data immediately.
-- `r.Context().Done()` tells the server when the client disconnected.
-- `EventSource` is the browser API for consuming SSE.
-- `event: token` lets the client handle streamed chunks separately from completion metadata.
-- `event: done` tells the client to close the stream.
-- SSE automatically reconnects if the connection drops.
+id: 1
+event: token
+data: {"delta":"You "}
+
+: heartbeat
+
+id: 2
+event: token
+data: {"delta":"asked: "}
+```
+
+The `-N` flag disables curl buffering so events print as they arrive.
+
+## Step 8: Test Last-Event-ID
+
+Browsers send `Last-Event-ID` after reconnecting. You can simulate it manually:
+
+```bash
+curl -N -H "Last-Event-ID: 5" "http://localhost:8080/chat/stream?message=Explain%20SSE"
+```
+
+This exercise only shows the header behavior. It does not implement true resume logic yet.
+
+## Key Things To Remember
+
+- `text/event-stream` tells the client this is SSE.
+- `data:` is the only required SSE field.
+- `event:` lets clients listen for named events.
+- `id:` helps reconnect/resume behavior.
+- `retry:` configures automatic browser reconnect delay.
+- `: heartbeat` is ignored by the client but keeps the connection alive.
+- `Flush()` is what makes streaming visible immediately.
+- SSE is server-to-client only. Use WebSockets when the client must send frequent messages back over the same connection.
 
 ## Done Criteria
 
 - `GET /chat/stream?message=...` streams fake LLM response chunks.
-- Browser client receives `token` and `done` events with `EventSource`.
-- `curl -N` shows streamed event output.
-- Server logs client disconnects.
-- You can explain when SSE is enough and when WebSockets are needed.
+- The stream includes `retry:`, `id:`, `event:`, and `data:` lines.
+- Heartbeat comments appear during the stream.
+- `curl -N` shows events as they arrive.
+- You can explain why SSE fits LLM response streaming.
 
-## When To Use SSE
-
-Use SSE when:
-
-- updates flow from server to client
-- the client does not need to send frequent messages back over the same connection
-- you want simple browser support over HTTP
-- examples include LLM response streaming, notifications, progress updates, dashboards, logs, and feeds
-
-## When Not To Use SSE
-
-Avoid SSE when:
-
-- you need bidirectional realtime communication
-- clients need to send frequent messages to the server
-- you need peer-to-peer browser communication
-- binary messages are central to the protocol
-
-Use WebSockets or WebRTC for those cases.

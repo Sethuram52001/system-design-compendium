@@ -33,12 +33,23 @@ You will:
 - Test with `curl -N`.
 - Handle client disconnects cleanly.
 
+## Extension: Resume and Keepalive Behavior
+
+Extend the basic stream with production-adjacent SSE features:
+
+- Send `id:` on each `token` and `done` event.
+- Send `retry: 3000` when the stream starts.
+- Send heartbeat comments such as `: heartbeat` during the stream.
+- Test the raw stream with `curl -N` and confirm those lines appear.
+- Explain what the browser does with `Last-Event-ID` after reconnecting.
+
 ## Learning Objectives
 
 - Understand SSE as one-way server push over HTTP.
 - Learn the SSE wire format.
 - Practice long-lived HTTP connections.
 - Understand why SSE works well for streaming LLM-style responses.
+- Learn how event IDs, retry hints, and heartbeat comments make long-lived streams more resilient.
 - Learn where SSE is useful: chat completions, progress updates, notifications, dashboards, feeds, and logs.
 
 ## Reference Shape
@@ -55,9 +66,7 @@ networking/exercises/sse/
 
 ## Stretch Goals
 
-- Add named events: `event: token`, `event: metadata`, and `event: done`.
-- Add event IDs for each token.
-- Send retry hints with `retry: 3000`.
+- Add named events: `event: token`, `event: metadata`, `event: usage`, and `event: done`.
 - Add a fake `usage` event with token counts.
 - Stream different canned responses based on the input message.
 - Compare SSE behavior with returning the full response at once.
