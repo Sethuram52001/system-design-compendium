@@ -52,7 +52,7 @@ From `caching/exercises/redis`:
 mkdir -p solution
 cd solution
 go mod init github.com/Sethuram52001/system-design-compendium/caching/exercises/redis/solution
-go get github.com/redis/go-redis/v9
+go get github.com/go-redis/redis
 go get github.com/gin-gonic/gin
 ```
 
@@ -66,13 +66,12 @@ Start with:
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis"
 )
 
 type User struct {
@@ -125,8 +124,7 @@ Create a Redis client:
 
 ```go
 var (
-	ctx = context.Background()
-	rdb = redis.NewClient(&redis.Options{
+	redisClient = redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
 )
@@ -148,7 +146,7 @@ Read a cached user:
 
 ```go
 func getCachedUser(id string) (User, bool, error) {
-	cached, err := rdb.Get(ctx, userCacheKey(id)).Result()
+	cached, err := redisClient.Get(userCacheKey(id)).Result()
 	if err == redis.Nil {
 		return User{}, false, nil
 	}
@@ -174,7 +172,7 @@ func setCachedUser(user User) error {
 		return err
 	}
 
-	return rdb.Set(ctx, userCacheKey(user.ID), payload, 30*time.Second).Err()
+	return redisClient.Set(userCacheKey(user.ID), payload, 30*time.Second).Err()
 }
 ```
 
@@ -182,7 +180,7 @@ Invalidate a cached user:
 
 ```go
 func invalidateUser(id string) error {
-	return rdb.Del(ctx, userCacheKey(id)).Err()
+	return redisClient.Del(userCacheKey(id)).Err()
 }
 ```
 
@@ -262,7 +260,7 @@ Gin removes most of the routing and JSON boilerplate:
 
 ```go
 func main() {
-	if err := rdb.Ping(ctx).Err(); err != nil {
+	if err := redisClient.Ping().Err(); err != nil {
 		log.Fatalf("redis ping failed: %v", err)
 	}
 
@@ -340,9 +338,9 @@ redis-cli GET user:1
 redis-cli TTL user:1
 ```
 
-## Extension: Sorted Sets
+## Extension 1: Leaderboard with Sorted Sets
 
-Sorted sets are one of Redis's most useful system design primitives. They store unique members with numeric scores.
+Sorted sets are one of Redis's most useful system design primitives. They store unique members with numeric scores. Redis keeps them ordered by score, which makes top-N and ranking queries easy.
 
 Common uses:
 
@@ -352,17 +350,29 @@ Common uses:
 - priority queues
 - recent activity scored by timestamp
 
-Commands to learn:
+### Commands to Learn
 
 ```text
 ZADD leaderboard:users 100 user:1
 ZADD leaderboard:users 250 user:2
 ZREVRANGE leaderboard:users 0 9 WITHSCORES
+ZSCORE leaderboard:users user:1
 ZRANK leaderboard:users user:1
 ZREVRANK leaderboard:users user:2
 ```
 
-Add a score update endpoint:
+### Minimal Design
+
+```text
+POST /users/:id/score
+  -> validate user exists
+  -> ZADD leaderboard:users score user:{id}
+
+GET /leaderboard
+  -> ZREVRANGE leaderboard:users 0 9 WITHSCORES
+```
+
+### Add a Score Update Endpoint
 
 ```go
 type ScoreRequest struct {
@@ -383,7 +393,7 @@ func updateScoreHandler(c *gin.Context) {
 		return
 	}
 
-	err := rdb.ZAdd(ctx, "leaderboard:users", redis.Z{
+	err := redisClient.ZAdd("leaderboard:users", redis.Z{
 		Score:  input.Score,
 		Member: "user:" + id,
 	}).Err()
@@ -396,11 +406,11 @@ func updateScoreHandler(c *gin.Context) {
 }
 ```
 
-Read the top users:
+### Read the Top Users
 
 ```go
 func leaderboardHandler(c *gin.Context) {
-	top, err := rdb.ZRevRangeWithScores(ctx, "leaderboard:users", 0, 9).Result()
+	top, err := redisClient.ZRevRangeWithScores("leaderboard:users", 0, 9).Result()
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to read leaderboard"})
 		return
@@ -410,46 +420,141 @@ func leaderboardHandler(c *gin.Context) {
 }
 ```
 
-Suggested route wiring:
+### Suggested Route Wiring
 
 ```go
 router.POST("/users/:id/score", updateScoreHandler)
 router.GET("/leaderboard", leaderboardHandler)
 ```
 
-Gin can route `/users/:id/score` and `/users/:id` separately, so no manual path parsing is needed.
+### Test
 
-## Extension: Counters
+```bash
+curl -X POST http://localhost:8080/users/1/score \
+  -H "Content-Type: application/json" \
+  -d '{"score":100}'
 
-Use `INCR` for request counts:
+curl -X POST http://localhost:8080/users/2/score \
+  -H "Content-Type: application/json" \
+  -d '{"score":250}'
 
-```go
-rdb.Incr(ctx, "metrics:requests:/users")
+curl http://localhost:8080/leaderboard
 ```
 
-A simple place to call this is at the top of `usersHandler`.
+Expected idea:
 
-## Extension: Fixed-Window Rate Limiting
+```json
+[
+  { "member": "user:2", "score": 250 },
+  { "member": "user:1", "score": 100 }
+]
+```
 
-Use `INCR` plus `EXPIRE`:
+System design note: sorted sets are great when ranking can be represented as one numeric score. If ranking requires complex filtering, permissions, or many dimensions, sorted sets may only be one part of the design.
+
+## Extension 2: Tiny Rate Limiter with Counters and TTL
+
+This is a minimal fixed-window rate limiter. It is not perfect, but it teaches a common Redis pattern:
+
+```text
+INCR rate_limit:{client}:{window}
+EXPIRE key after window
+reject when count > limit
+```
+
+### Commands to Learn
+
+```text
+INCR rate_limit:client-1
+EXPIRE rate_limit:client-1 60
+TTL rate_limit:client-1
+```
+
+### Minimal Helper
+
+Use IP address as the client identity for the demo:
 
 ```go
 func allowRequest(clientID string, limit int64) bool {
 	key := "rate_limit:" + clientID
-	count, err := rdb.Incr(ctx, key).Result()
+
+	count, err := redisClient.Incr(key).Result()
 	if err != nil {
 		return true
 	}
+
 	if count == 1 {
-		rdb.Expire(ctx, key, time.Minute)
+		redisClient.Expire(key, time.Minute)
 	}
+
 	return count <= limit
 }
 ```
 
-If `allowRequest` returns false, respond with HTTP `429 Too Many Requests`.
+### Gin Middleware
 
-## Extension: Pub/Sub with Two Services
+```go
+func rateLimitMiddleware(limit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		clientID := c.ClientIP()
+		if !allowRequest(clientID, limit) {
+			c.JSON(429, gin.H{"error": "rate limit exceeded"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+```
+
+Wire it:
+
+```go
+router := gin.Default()
+router.Use(rateLimitMiddleware(5))
+```
+
+### Test
+
+Run the same request several times quickly:
+
+```bash
+for i in {1..8}; do curl -i http://localhost:8080/users/1; done
+```
+
+After the limit is exceeded, expect HTTP `429`.
+
+System design note: this fixed-window limiter is easy but can be bursty at window boundaries. Sliding-window or token-bucket designs are smoother, but they are a later exercise.
+
+## Extension 3: Request Counters
+
+Use `INCR` to track simple request counts:
+
+```go
+func countRequest(path string) {
+	redisClient.Incr("metrics:requests:"+path)
+}
+```
+
+A simple place to call it:
+
+```go
+func getUserHandler(c *gin.Context) {
+	countRequest("/users/:id")
+	// existing handler logic...
+}
+```
+
+Read it directly:
+
+```bash
+redis-cli GET metrics:requests:/users/:id
+```
+
+System design note: counters are useful for metrics, quotas, view counts, and rate limiting. For analytics at larger scale, Redis may feed another system rather than hold all history.
+
+## Extension 4: Pub/Sub with Two Services
 
 Use Pub/Sub to model live event fanout between processes.
 
@@ -466,7 +571,9 @@ notification-service / audit-service
   -> logs or prints the update
 ```
 
-Publisher snippet in the API service:
+Pub/Sub is intentionally a two-process experiment. Keep your API service running, then run a separate subscriber process in another terminal.
+
+### Publisher in the API Service
 
 ```go
 func publishUserUpdated(id string) {
@@ -475,16 +582,34 @@ func publishUserUpdated(id string) {
 		"user_id": id,
 	}
 	payload, _ := json.Marshal(event)
-	rdb.Publish(ctx, "users.events", payload)
+	redisClient.Publish("user.events", payload)
 }
 ```
 
-Subscriber process:
+Call it after updating the user:
 
 ```go
+updated := updateUserInStore(id, input)
+invalidateUser(id)
+publishUserUpdated(id)
+```
+
+### Subscriber Service
+
+Create `subscriber.go` in a separate folder or temporary file:
+
+```go
+package main
+
+import (
+	"log"
+
+	"github.com/go-redis/redis"
+)
+
 func main() {
-	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
-	sub := rdb.Subscribe(context.Background(), "users.events")
+	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	sub := redisClient.Subscribe("user.events")
 	defer sub.Close()
 
 	for msg := range sub.Channel() {
@@ -493,17 +618,52 @@ func main() {
 }
 ```
 
-Pub/Sub messages are not persisted. If the subscriber is offline, it misses the event.
+### Test
 
-## Extension: Redis Streams in the Same Service
+Terminal 1:
+
+```bash
+go run subscriber.go
+```
+
+Terminal 2:
+
+```bash
+curl -X PUT http://localhost:8080/users/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada Updated","email":"ada.updated@example.com"}'
+```
+
+The subscriber should print the event payload.
+
+Important Pub/Sub behavior:
+
+- Subscribers only receive messages while connected.
+- Messages are not persisted.
+- Multiple subscribers can receive the same live message.
+- Use this for live fanout, not durable job processing.
+
+## Extension 5: Redis Streams in the Same Service
 
 Streams are better when you want an event history that can be read later.
 
-On update:
+Minimal design:
+
+```text
+PUT /users/:id
+  -> update memory
+  -> invalidate cache
+  -> XADD user_events * type user.updated user_id {id}
+
+GET /events
+  -> XREVRANGE user_events + - COUNT 10
+```
+
+### Append an Event on Update
 
 ```go
 func appendUserEvent(id string) {
-	rdb.XAdd(ctx, &redis.XAddArgs{
+	redisClient.XAdd(&redis.XAddArgs{
 		Stream: "user_events",
 		Values: map[string]any{
 			"type":    "user.updated",
@@ -513,11 +673,19 @@ func appendUserEvent(id string) {
 }
 ```
 
-Read recent events:
+Call it after updates:
+
+```go
+updated := updateUserInStore(id, input)
+invalidateUser(id)
+appendUserEvent(id)
+```
+
+### Read Recent Events
 
 ```go
 func eventsHandler(c *gin.Context) {
-	events, err := rdb.XRevRangeN(ctx, "user_events", "+", "-", 10).Result()
+	events, err := redisClient.XRevRangeN("user_events", "+", "-", 10).Result()
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to read events"})
 		return
@@ -527,7 +695,29 @@ func eventsHandler(c *gin.Context) {
 }
 ```
 
-Difference:
+Wire it:
+
+```go
+router.GET("/events", eventsHandler)
+```
+
+### Test
+
+```bash
+curl -X PUT http://localhost:8080/users/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada Streamed","email":"ada.streamed@example.com"}'
+
+curl http://localhost:8080/events
+```
+
+You can also inspect with Redis CLI:
+
+```bash
+redis-cli XREVRANGE user_events + - COUNT 10
+```
+
+### Pub/Sub vs Streams
 
 | Feature | Pub/Sub | Streams |
 |---|---|---|
@@ -538,6 +728,8 @@ Difference:
 
 For this exercise, keep Streams simple: append events and read recent events. Consumer groups can wait.
 
+System design note: Streams are closer to a lightweight event log. They are still Redis, so think carefully before treating them like Kafka, but they are useful for small async workflows and local event history.
+
 ## Done Criteria
 
 - Redis is running locally.
@@ -546,4 +738,6 @@ For this exercise, keep Streams simple: append events and read recent events. Co
 - Updates invalidate the Redis key.
 - Responses clearly show cache hit vs miss.
 - You can explain why Redis is not the source of truth in this exercise.
-- You have tried the sorted set extension or can explain how it would work.
+- You can explain how sorted sets support leaderboards.
+- You can explain why fixed-window rate limiting uses counters with TTL.
+- You can explain the difference between Pub/Sub and Streams.

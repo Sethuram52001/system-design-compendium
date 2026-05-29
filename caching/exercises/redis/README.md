@@ -66,10 +66,10 @@ caching/exercises/redis/
 After the main exercise works, add one or more of these:
 
 - **Sorted sets:** implement a leaderboard or top users by score using `ZADD`, `ZREVRANGE`, and `ZRANK`.
+- **Rate limiting:** implement a tiny fixed-window limiter with `INCR` and `EXPIRE`.
 - **Counters:** track endpoint request counts with `INCR`.
-- **Rate limiting:** implement a simple fixed-window limiter with `INCR` and `EXPIRE`.
 - **Pub/Sub with two services:** publish user update events from an API service and consume them in a separate notification or audit service.
-- **Redis Streams in the same service:** append user update events to a stream and read them back as a lightweight event log.
+- **Redis Streams in the same service:** append user update events with `XADD` and read recent events with `XREVRANGE`.
 - **Cache metrics:** expose cache hit and miss counts.
 
 Sorted sets are the recommended first extension because they show up frequently in system design discussions for leaderboards, ranking, trending items, priority queues, and time-windowed scoring.
