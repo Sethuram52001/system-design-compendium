@@ -9,7 +9,7 @@ The goal is to pair concise concept notes and curated resources with focused exe
 ## Topics
 
 - [Networking](networking/README.md): protocols, service communication patterns, and small API/RPC exercises.
-- [Databases](databases/README.md): relational, wide-column, and search-oriented datastore exercises.
+- [Databases](databases/README.md): Postgres fundamentals, indexing, locking, partitioning, Cassandra modeling, and Elasticsearch search.
 - [Caching](caching/README.md): cache-aside, TTLs, counters, rate limiting, and ephemeral state.
 
 ## Repository Pattern
