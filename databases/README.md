@@ -12,6 +12,10 @@ Redis is intentionally kept in `caching/exercises/redis` instead of this folder.
 
 - [Postgres](exercises/postgres/README.md): relational modeling, constraints, transactions, indexes, locking, full-text search, geospatial indexes, and partitioning.
 
+## Wiki
+
+- [Postgres](wiki/postgres.md)
+
 ## Learning Objectives
 
 - Understand how database choice affects system design.
