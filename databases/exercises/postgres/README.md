@@ -77,19 +77,29 @@ Requirements:
 - In another terminal, try to update the same row.
 - Observe that the second update waits until the first transaction releases the lock.
 
-### Exercise 5: Optimistic Locking and `SKIP LOCKED`
+### Exercise 5: Optimistic Locking
 
-Create `solution/05_optimistic_and_skip_locked.sql`.
+Create `solution/05_optimistic_locking.sql`.
 
 Requirements:
 
 - Use a `version` column for optimistic locking.
 - Make an update succeed only when the expected version matches.
+- Test the same update with an old version and observe that it affects zero rows.
+
+### Exercise 6: `SKIP LOCKED`
+
+Create `solution/06_skip_locked.sql`.
+
+Requirements:
+
 - Use `FOR UPDATE SKIP LOCKED` to simulate workers claiming pending orders.
+- Run the same claim query from two transactions.
+- Observe that locked rows are skipped instead of making the second transaction wait.
 
-### Exercise 6: Full-Text Search
+### Exercise 7: Full-Text Search
 
-Create `solution/06_full_text_search.sql`.
+Create `solution/07_full_text_search.sql`.
 
 Requirements:
 
@@ -98,9 +108,9 @@ Requirements:
 - Add a GIN index.
 - Query using `websearch_to_tsquery` or `to_tsquery`.
 
-### Exercise 7: Geospatial Index
+### Exercise 8: Geospatial Index
 
-Create `solution/07_geospatial_postgis.sql`.
+Create `solution/08_geospatial_postgis.sql`.
 
 Requirements:
 
@@ -110,9 +120,9 @@ Requirements:
 - Add a GiST index.
 - Query for places within a distance.
 
-### Exercise 8: Partitioning and BRIN
+### Exercise 9: Partitioning and BRIN
 
-Create `solution/08_partitioning_brin.sql`.
+Create `solution/09_partitioning_brin.sql`.
 
 Requirements:
 

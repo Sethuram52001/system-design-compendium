@@ -243,9 +243,9 @@ psql postgres://app:app@localhost:5432/system_design_postgres -f 04_locking_term
 
 Terminal B should wait until terminal A commits.
 
-## Exercise 5: Optimistic Locking and `SKIP LOCKED`
+## Exercise 5: Optimistic Locking
 
-Create `solution/05_optimistic_and_skip_locked.sql`.
+Create `solution/05_optimistic_locking.sql`.
 
 Optimistic locking checks a version instead of blocking first:
 
@@ -258,6 +258,16 @@ WHERE id = 2
 ```
 
 If the update affects zero rows, treat it as a conflict.
+
+Run:
+
+```bash
+psql postgres://app:app@localhost:5432/system_design_postgres -f 05_optimistic_locking.sql
+```
+
+## Exercise 6: `SKIP LOCKED`
+
+Create `solution/06_skip_locked.sql`.
 
 Use `SKIP LOCKED` to claim work without waiting on already locked rows:
 
@@ -277,12 +287,12 @@ COMMIT;
 Run:
 
 ```bash
-psql postgres://app:app@localhost:5432/system_design_postgres -f 05_optimistic_and_skip_locked.sql
+psql postgres://app:app@localhost:5432/system_design_postgres -f 06_skip_locked.sql
 ```
 
-## Exercise 6: Full-Text Search
+## Exercise 7: Full-Text Search
 
-Create `solution/06_full_text_search.sql`.
+Create `solution/07_full_text_search.sql`.
 
 Use `tsvector` for searchable text and GIN for term lookup:
 
@@ -312,12 +322,12 @@ WHERE search_vector @@ websearch_to_tsquery('english', 'postgres indexes');
 Run:
 
 ```bash
-psql postgres://app:app@localhost:5432/system_design_postgres -f 06_full_text_search.sql
+psql postgres://app:app@localhost:5432/system_design_postgres -f 07_full_text_search.sql
 ```
 
-## Exercise 7: Geospatial Index
+## Exercise 8: Geospatial Index
 
-Create `solution/07_geospatial_postgis.sql`.
+Create `solution/08_geospatial_postgis.sql`.
 
 PostGIS is not available in the plain `postgres` image. For this exercise, change `docker-compose.yml` to use a PostGIS image such as:
 
@@ -353,9 +363,9 @@ WHERE ST_DWithin(
 );
 ```
 
-## Exercise 8: Partitioning and BRIN
+## Exercise 9: Partitioning and BRIN
 
-Create `solution/08_partitioning_brin.sql`.
+Create `solution/09_partitioning_brin.sql`.
 
 Partition an append-style table by time:
 
@@ -386,5 +396,5 @@ USING BRIN(created_at);
 Run:
 
 ```bash
-psql postgres://app:app@localhost:5432/system_design_postgres -f 08_partitioning_brin.sql
+psql postgres://app:app@localhost:5432/system_design_postgres -f 09_partitioning_brin.sql
 ```
